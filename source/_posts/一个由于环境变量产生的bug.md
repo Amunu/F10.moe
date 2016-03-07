@@ -24,9 +24,9 @@ undefined
 
 ## process.env
 
-  那我们先去研究下 `process.env` 的实现，它的值是怎么得到的呢？
+  那么 `process.env`它的值是怎么得到的呢？(･ω´･ )是不是取值的时候有什么奇怪的设定呢？
 
-  接着我找到了 node.cc 里初始化 node 里 process 的函数--[SetupProcessObject函数实现](https://github.com/nodejs/node/find/v5.x#L2775)，以及 `process.env`的[定义](https://github.com/nodejs/node/find/v5.x#L2936):
+  接着我找到了 node.cc 里初始化 node 里 process 的函数--[SetupProcessObject函数实现](https://github.com/nodejs/node/blob/v5.x/src/node.cc#L2775)，以及 `process.env`的[定义](https://github.com/nodejs/node/blob/v5.x/src/node.cc#L2939):
 
 ```
  // create process.env
@@ -52,7 +52,7 @@ Handle< Value > 	data = Handle< Value >()
 )		
 所以上面的 `process_env_template->SetNamedPropertyHandler` 相当于创建了一个拥有 getter, setter, query...方法的对象
 
-那么再来看 `EnvGetter` 的[实现](https://github.com/nodejs/node/find/v5.x#L2451):
+(% ﾟーﾟ)那么再来看 `EnvGetter` 的[实现](https://github.com/nodejs/node/blob/v5.x/src/node.cc#L2451):
 
 ```
 static void EnvGetter(Local<String> property,
@@ -71,9 +71,9 @@ static void EnvGetter(Local<String> property,
 
 ```
 
-  最后定位到 `char* getenv (const char* name)` 这个函数， 也就是在linux 下的 C 语言通过 [getenv()](http://www.cplusplus.com/reference/cstdlib/getenv/) 这个方法来获取当前的环境变量。
+  最后定位到 `char* getenv (const char* name)` 这个函数， 也就是在 UNIX 下的 C 语言通过 [getenv()](http://www.cplusplus.com/reference/cstdlib/getenv/) 这个方法来获取当前的环境变量。
 
-  也就是说 `process.env` 拿的直接是当前系统的环境变量，那为什么用 `sudo -u admin xxx` 来启动环境变量却不是 admin 的 home 呢？
+  也就是说 `process.env` 拿的直接是当前系统的环境变量，( ˘･з･)那为什么用 `sudo -u admin xxx` 启动后的环境变量却不是 admin 下环境变量的呢 ？
 
 ## sudo -u
 
@@ -83,7 +83,9 @@ static void EnvGetter(Local<String> property,
   -u user       run command (or edit file) as specified user //指定用户运行命令（或编辑文件）
 ```
 
-  那么，问题来了，这个命令和真正切到该用户下(`sudo su admin`)去执行命令有什么区别呢？是不是因为这些区别所以才引起一些奇怪的权限问题呢？
+  那么，问题又来了( ˘•ω•˘ )，这个命令(`sudo -u admin`)和真正切到该用户下(`sudo su admin`)去执行命令有什么区别呢？是不是因为这些区别所以才引起一些奇怪的权限问题呢？
+
+  首先先来试下 `sudo -u xxx`，由于本地电脑上没有其他的用户，就直接用 `root` 代替了。
 
 ```
   ➜  ~  sudo -u root node
@@ -99,7 +101,7 @@ static void EnvGetter(Local<String> property,
     SUDO_GID: '20'
   }
 ```
-  可以看到这里的 `HOME` 字段并不是 `/var/root` 而是 `/Users/当前用户`，用了 `root` 的权限来执行 `node`, 但是它的类似 `HOME` 字段什么的仍未被改变，还是在当前状态，这是为什么呢？
+  可以看到这里的 `HOME` 字段并不是 `/var/root` 而是 `/Users/当前用户`，用了 `root` 的权限来执行 `node`, 但是它的类似 `HOME` 字段的环境变量仍未被改变，还是在当前状态，(´-ω-｀)这是为什么呢？
 
   我们可以执行 `sudo -l` 来看当前的 sudo 配置或者直接查看 `/etc/sudoers`：
 
@@ -115,7 +117,7 @@ static void EnvGetter(Local<String> property,
       (ALL) ALL
 
 ```
-  可以看到这里有很多的 `env_keep`，也就是当使用 `sudo` 时，这些环境变量保持不变，所以如果我们在配置里把 `env_keep+="HOME MAIL"` 给注释了再用上面的方法执行的时候就不应该依旧是 `HOME: '/Users/minary'` 了，来验证下吧：
+  可以看到这里有很多的 `env_keep`，也就是当使用 `sudo` 时，这些环境变量保持不变，所以如果我们在配置里把 `env_keep+="HOME MAIL"` 给注释了再用上面的方法执行的时候就不应该依旧是 `HOME: '/Users/minary'` 了，来验证下吧( ¯•ω•¯ )：
 
 ```
 sudo -l             
@@ -147,8 +149,9 @@ User minary may run the following commands on this host:
 >
 
 ```
+  ヽ(✿ﾟ▽ﾟ)ノ `HOME` 变成了 `/var/root`，验证成功！
 
-  但是在阿里内部的服务器上，这个配置被单独配置过，怎么可以不修改 `/etc/sudoers` 来直接用 `root` 的环境变量呢？
+  但是在内部的服务器上，`/etc/sudoers` 被单独配置过，怎么可以不修改这个配置但依旧获取到 `root` 的环境变量呢？
   其实也很简单，直接用 `sudo -u root -i xxx` 执行就可以了, 来看下 `sudo -h` 里面对 `-i` 的解释：
 
 ```
@@ -174,7 +177,7 @@ Password:
 
 ```
 
-  切换完成～ヾ(✿❛ω❛ฺฺ）ﾉ，撒花～
+  可以看到这里的 `HOME` 也变成了 `/var/root`, 切换完成～ヾ(✿❛ω❛ฺฺ）ﾉ，撒花～
 
 ## os.homedir
 
@@ -201,6 +204,9 @@ Password:
 const binding = process.binding('os');
 exports.homedir = binding.getHomeDirectory;
 
+```
+
+```
 // node/blob/master/src/node_os.cc
 
 static void GetHomeDirectory(const FunctionCallbackInfo<Value>& args) {
@@ -239,7 +245,12 @@ buf = getenv("HOME");
 
 > I wonder if this should check $HOME first? It's something of a UNIX tradition to be able to change your home directory on the fly. A problem with that is that getenv("HOME") is not MT-safe.
 
-担心哪天把环境变量的`HOME`给改掉了，会导致出现一系列的不安全的问题。
+担心某些 UNIX 系统在运行的时候会把环境变量的`HOME`路径给改掉了，会导致出现一系列的不安全的问题。
+
+咦，那不是和 `process.env.HOME` 功能基本一样了么？然后找到了这个功能诞生前的[讨论](https://github.com/nodejs/node/pull/1670), 大致的意思就是 `os.homedir()` 是 `process.env.HOME` 的升级版
 
 ## 总结
-  所以，最后的总结就是在执行的时候注意这些细节，最好的执行方法还是直接用 `sudo su xxx` 去切换用户后去执行比较好，当然还是可以选择 `sudo -u xxx -i` 去执行，但是不推荐直接使用 `sudo -u xxx` 的方法来启动服务。
+
+  所以，最后的总结就是在执行的时候注意这些细节，最好的执行方法还是直接用 `sudo su xxx` 去切换用户后去执行比较好，当然还是可以选择 `sudo -u xxx -i` 去执行，但是不推荐直接使用 `sudo -u xxx` 的方法来启动服务, 会导致一系列的因为环境变量引起的问题。
+
+  在 node.js 层上，也最好用`os.homedir()`来替代`process.env.HOME`，因为当遇到 `getenv('PATH')`为空的时候，`os.homedir()`会使用当前的运行用户的目录，降低bug率。
